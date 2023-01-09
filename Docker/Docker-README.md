@@ -1,6 +1,11 @@
 ## Docker
 
-To install Docker on Ubuntu, follow these steps:
+1. You can install docker running this script:
+```
+bash install-docker.sh
+```
+
+2. To install Docker on Ubuntu, follow these steps:
 
 ```
 sudo apt update
