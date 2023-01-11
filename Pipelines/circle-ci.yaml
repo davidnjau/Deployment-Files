@@ -1,0 +1,56 @@
+version: 2.1
+jobs:
+
+  build_auth_service:
+    working_directory: ~/botswanaemr-patient-app-web/BotswanaEMRAuthentication
+    docker:
+      - image: cimg/openjdk:17.0.1
+
+    environment:
+      MAVEN_OPTS: -Xmx3200m
+
+    steps:
+      - setup_remote_docker
+      - checkout:
+          path: ~/botswanaemr-patient-app-web
+      - when:
+          condition:
+           equal: [ development-backend, << pipeline.git.branch >> ]
+          steps:
+            - run:
+                name: Build with Maven
+                command: mvn install
+            - run:
+                name: Build Docker Image and Push to Docker Hub
+                command: |
+                  docker build -t dnjau/botswana_emr_auth_image:v3 .
+                  echo "Sc281-6736/2014" | docker login -u "dnjau" --password-stdin
+                  docker push dnjau/botswana_emr_auth_image:v3
+                  docker logout
+
+
+  deploy_services:
+    machine:
+      image: ubuntu-2004:202010-01
+    steps:
+      - run: sudo apt install rsync
+      - run: sudo apt-get install sshpass
+      - run:
+          name: SSH into remote server and deploy auth service
+          command: |
+            sshpass -p bitri@2022 ssh dnjau@botswanaemrdev.intellisoftkenya.com 'kubectl delete -f kubernetes/backend/ && kubectl create -f kubernetes/backend/ && sleep 6'
+
+
+
+
+workflows:
+    version: 2
+    build_and_push:
+        jobs:
+        - build_auth_service
+        - deploy_services:
+            requires:
+            - build_auth_service
+            filters:
+              branches:
+                only: development-backend

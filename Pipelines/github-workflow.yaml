@@ -1,0 +1,52 @@
+# This workflow will build a package using Maven and then publish it to GitHub packages when a release is created
+# For more information see: https://github.com/actions/setup-java/blob/main/docs/advanced-usage.md#apache-maven-with-a-settings-path
+
+name: Build Maven Jar
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up JDK 11
+      uses: actions/setup-java@v3
+      with:
+        java-version: '11'
+        distribution: 'temurin'
+
+    - name: Build with Maven
+      run: mvn clean install
+
+    - name: Build & push Docker image
+      uses: mr-smithers-excellent/docker-build-push@v5
+      with:
+        image: nimonatural/sms_revampmanager_image
+        tags: 1
+        registry: docker.io
+        dockerfile: Dockerfile
+        username: ${{ secrets.DOCKER_HUB_USERNAME_NIMO }}
+        password: ${{ secrets.DOCKER_HUB_PASSWORD_NIMO }}
+    
+    - name: executing remote ssh commands using password
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.SSH_HOST_NIMO }}
+        username: ${{ secrets.SSH_USER_NIMO }}
+        password: ${{ secrets.SSH_PASSWORD_NIMO }}
+        port: ${{ secrets.SSH_PORT_NIMO }}
+        script_stop: true
+        script: |
+          cd /home/david/deployments
+          export KUBECONFIG=/etc/rancher/rke2/rke.yaml
+          kubectl apply -f smsmanager.yaml -n default
+          exit 0
