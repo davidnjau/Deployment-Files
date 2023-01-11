@@ -33,6 +33,11 @@ docker
 ### Working with Docker
 The following commands are useful for working with Docker:
 
+## Login to Docker Hub
+```
+docker login -u <your-docker-id> -p <your-docker-password>
+```
+
 ## List all images
 ```
 docker images

@@ -1,0 +1,11 @@
+apiVersion: v1
+data:
+ tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUhzRENDQlppZ0F3SUJBZ0lRQWhxZFUzVzFna3JaREdUMEUrZFpXekFOQmdrcWhraUc5dzBCQVFzRkFEQmMKTVFzd0NRWURWUVFHRXdKVlV6RVhNQlVHQT<hidden>
+ tls.key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUV2Z0lCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQktnd2dnU2tBZ0VBQW9JQkFRQzFUbDJZekxaemkveVgKWEhFbnRReXkxYUlDUC9RV3FuVFV0ZXJhN2<hidden>
+kind: Secret
+metadata:
+ name: test-tls
+ namespace: default
+type: kubernetes.io/tls
+
+# Use this command to get the tls.crt `cat icl.crt | base64 -w 0`. The icl.crt is the bundled certificate.
