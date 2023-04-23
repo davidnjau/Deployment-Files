@@ -1,0 +1,142 @@
+name: Build and Deploy Spring Boot Microservices
+
+on:
+  pull_request:
+    branches:
+      - main
+
+env:
+  DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+  DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+  SSH_PORT: 22
+
+# INTERNATIONAL INSTANCE
+  SSH_PASS_INTERNATIONAL: ${{ secrets.SSH_PRIVATE_KEY }}
+  SSH_HOST_INTERNATIONAL: ${{ secrets.SSH_HOST_INTERNATIONAL }}
+  SSH_USER_INTERNATIONAL: ${{ secrets.SSH_USER_INTERNATIONAL }}
+
+  CONTAINER_NAME_INTERNATIONAL: dhis_pss_international
+  IMAGE_NAME_INTERNATIONAL: dnjau/dhis_pss_international:v3
+
+# NATIONAL INSTANCE
+  SSH_PASS_NATIONAL: ${{ secrets.SSH_PRIVATE_KEY }}
+  SSH_HOST_NATIONAL: ${{ secrets.SSH_HOST_NATIONAL }}
+  SSH_USER_NATIONAL: ${{ secrets.SSH_USER_NATIONAL }}
+
+  CONTAINER_NAME_NATIONAL: dhis_pss_national
+  IMAGE_NAME_NATIONAL: dnjau/dhis_pss_national:v1
+
+
+jobs:
+  build_microservice_international:
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: 11
+          distribution: temurin
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Build International Instance
+        run: |
+          cd InternationalInstance
+          mvn clean package -Dspring.profiles.active=server
+
+      - name: Build & push International Docker image
+        run: |
+          cd InternationalInstance
+          docker login -u ${{ env.DOCKER_USERNAME }} -p ${{ env.DOCKER_PASSWORD }}
+          docker buildx create --use --name workflowBuilder
+          docker buildx build --platform=linux/amd64,linux/arm64 -t ${{ env.IMAGE_NAME_INTERNATIONAL }} --push .
+          docker logout
+
+      - name: Setup SSH keys
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ env.SSH_PASS_INTERNATIONAL }}
+
+
+      - name: Remote ssh to server and update international instance
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ env.SSH_HOST_INTERNATIONAL }}
+          username: ${{ env.SSH_USER_INTERNATIONAL }}
+          port: ${{ env.SSH_PORT }}
+          key: ${{ env.SSH_PASS_INTERNATIONAL }}
+          script_stop: true
+          script: |
+            if docker ps -a --format '{{.Names}}' | grep -q ${{ env.CONTAINER_NAME_INTERNATIONAL }}; then
+              echo "Check 1"
+              docker stop ${{ env.CONTAINER_NAME_INTERNATIONAL }}
+              docker rm ${{ env.CONTAINER_NAME_INTERNATIONAL }}
+            fi
+            docker pull --quiet ${{ env.IMAGE_NAME_INTERNATIONAL }}
+            if [ $? -eq 0 ]; then
+              echo "Docker image ${{ env.IMAGE_NAME_INTERNATIONAL }} pulled successfully"
+            else
+              echo "Error: Failed to pull Docker image ${{ env.IMAGE_NAME_INTERNATIONAL }}"
+              exit 1
+            fi
+            docker run -d --name ${{ env.CONTAINER_NAME_INTERNATIONAL }} -p 7009:7009 ${{ env.IMAGE_NAME_INTERNATIONAL }}
+            docker logout
+            sleep 10
+  
+
+
+  build_microservice_national:
+    runs-on: ubuntu-20.04
+
+    steps:
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          java-version: 11
+          distribution: temurin
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Build National Instance
+        run: |
+          cd PssNationalInstance
+          mvn clean package -Dspring.profiles.active=server
+
+      - name: Build & push National Docker image
+        run: |
+          cd PssNationalInstance
+          docker login -u ${{ env.DOCKER_USERNAME }} -p ${{ env.DOCKER_PASSWORD }}
+          docker buildx create --use --name workflowBuilder
+          docker buildx build --platform=linux/amd64,linux/arm64 -t ${{ env.IMAGE_NAME_NATIONAL }} --push .
+          docker logout
+
+      - name: Setup SSH keys
+        uses: webfactory/ssh-agent@v0.5.0
+        with:
+          ssh-private-key: ${{ env.SSH_PASS_NATIONAL }}
+
+      - name: Remote ssh to server and update National instance
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ env.SSH_HOST_NATIONAL }}
+          username: ${{ env.SSH_USER_NATIONAL }}
+          port: ${{ env.SSH_PORT }}
+          key: ${{ env.SSH_PASS_NATIONAL }}
+          script_stop: true
+          script: |
+            if docker ps -a --format '{{.Names}}' | grep -q ${{ env.CONTAINER_NAME_NATIONAL }}; then
+              echo "Check 1"
+              docker stop ${{ env.CONTAINER_NAME_NATIONAL }}
+              docker rm ${{ env.CONTAINER_NAME_NATIONAL }}
+            fi
+            docker pull --quiet ${{ env.IMAGE_NAME_NATIONAL }}
+            if [ $? -eq 0 ]; then
+              echo "Docker image ${{ env.IMAGE_NAME_NATIONAL }} pulled successfully"
+            else
+              echo "Error: Failed to pull Docker image ${{ env.IMAGE_NAME_NATIONAL }}"
+              exit 1
+            fi
+            docker run -d --name ${{ env.CONTAINER_NAME_NATIONAL }} -p 7001:7001 ${{ env.IMAGE_NAME_NATIONAL }}
+            docker logout
+            sleep 10
