@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: postgres_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin_password
+      POSTGRES_DB: initial_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready", "-d", "db_prod"]
+      interval: 30s
+      timeout: 60s
+      retries: 5
+      start_period: 80s 
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5455:5432"
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+
+  superset:
+    image: apache/superset:latest
+    container_name: superset
+    restart: unless-stopped
+    environment:
+      - SUPERSET_SECRET_KEY=6xO68SxjNUp1RXSL7zCKHSUk
+    depends_on:
+      - postgres
+    ports:
+      - "8088:8088"
+    volumes:
+      - superset_data:/app/superset_home
+    command: 
+      - "bash" 
+      - "-c" 
+      - |
+        superset db upgrade && 
+        superset init && 
+        superset run -p 8088 --host=0.0.0.0 --with-threads
+
+volumes:
+  postgres_data:
+  portainer_data:
+  superset_data:
