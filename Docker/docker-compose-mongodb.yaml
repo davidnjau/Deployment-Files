@@ -2,11 +2,11 @@ version: '3.8'
 
 services:
   mongodb:
-    image: mongo:6
-    container_name: mongodb
+    image: ${MONGODB_IMAGE}
+    container_name: ${MONGODB_CONTAINER_NAME}
     restart: unless-stopped
     ports:
-      - "27017:27017"
+      - "${MONGODB_PORT}:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}

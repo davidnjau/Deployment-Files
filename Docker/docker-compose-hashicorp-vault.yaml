@@ -2,21 +2,31 @@ version: '3.8'
 
 services:
   vault:
-    image: hashicorp/vault:latest
+    image: ${VAULT_IMAGE}
     container_name: vault
     restart: unless-stopped
     ports:
-      - "8200:8200"
+      - "${VAULT_PORT}:8200"
     cap_add:
       - IPC_LOCK
     environment:
-      VAULT_ADDR: http://0.0.0.0:8200
+      VAULT_ADDR: ${VAULT_ADDR}
     volumes:
       - vault-file:/vault/file
       - vault-logs:/vault/logs
       - ./vault/config:/vault/config
-    command: vault server -config=/vault/config/vault.hcl
+      - ./init.sh:/vault/init.sh
+    command: >
+      sh -c "vault server -config=/vault/config/vault.hcl & 
+             sleep 5 && 
+             sh /vault/init.sh"
+    networks:
+      - ${NETWORK_NAME}
 
 volumes:
   vault-file:
   vault-logs:
+
+networks:
+  ${NETWORK_NAME}:
+    driver: bridge

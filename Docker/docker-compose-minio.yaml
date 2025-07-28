@@ -2,11 +2,11 @@ version: '3.8'
 
 services:
   minio:
-    image: quay.io/minio/minio:latest
-    container_name: minio
+    image: ${MINIO_IMAGE}
+    container_name: ${MINIO_CONTAINER_NAME}
     ports:
-      - "9000:9000"   # S3 API endpoint
-      - "9001:9001"   # Web Console
+      - "${MINIO_S3_PORT}:9000"   # S3 API endpoint
+      - "${MINIO_WEB_PORT}:9001"   # Web Console
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
@@ -20,6 +20,12 @@ services:
       timeout: 20s
       retries: 3
       start_period: 20s
+    networks:
+      - ${NETWORK_NAME}
 
 volumes:
   minio_data:
+
+networks:
+  ${NETWORK_NAME}:
+    driver: bridge
