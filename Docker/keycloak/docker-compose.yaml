@@ -1,0 +1,40 @@
+version: '3.8'
+
+volumes:
+  keycloak-postgres:
+
+networks:
+  cloudbuild:
+    driver: bridge
+
+services:
+  keycloak-postgres:
+    image: postgres:14-alpine
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    networks:
+      - cloudbuild
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: keycloak
+      POSTGRES_PASSWORD: keycloak_not_123
+    volumes:
+      - 'keycloak-postgres:/var/lib/postgresql/data'
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:23.0.7
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+    networks:
+      - cloudbuild
+    ports:
+      - "8999:8080"
+    env_file:
+      - .env
+    depends_on:
+      - keycloak-postgres
+    command: start-dev
