@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./spring_boot_init.sh service_name1 service_name2 service_name3 common
+# Usage: ./spring_boot_init.sh project_name service_name1 service_name2 service_name3 common
 # First argument is root project name, others are module names
 
 ROOT_PROJECT=$1
