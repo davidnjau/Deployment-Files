@@ -1,0 +1,59 @@
+{
+  "realm": "keycloak-spring-boot-realm",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": true,
+  "clients": [
+    {
+      "clientId": "keycloak-spring-boot-client",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "7WQKx8RuVv6ta5laSKHMpVuUDuoye0kq",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "http://localhost:8099/*"
+      ],
+      "webOrigins": [
+        "*"
+      ]
+    }
+  ],
+  "roles": {
+    "realm": [
+      {
+        "name": "ROLE_USER",
+        "description": "Basic application user"
+      },
+      {
+        "name": "ROLE_ADMIN",
+        "description": "Administrator with elevated privileges"
+      },
+      {
+        "name": "ROLE_SUPERUSER",
+        "description": "Superuser with the highest privileges"
+      }
+    ]
+  },
+  "users": [
+    {
+      "username": "service-account-keycloak-spring-boot-client",
+      "enabled": true,
+      "serviceAccountClientId": "keycloak-spring-boot-client",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users",
+          "query-users",
+          "view-users",
+          "realm-admin"
+        ]
+      }
+    }
+  ]
+}

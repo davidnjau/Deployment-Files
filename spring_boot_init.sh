@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Usage: ./spring_boot_init.sh project_name service_name1 service_name2 service_name3 common
+# Usage: ./spring_boot_init.sh project_name service_name1 service_name2 common shared
 # First argument is root project name, others are module names
 
 ROOT_PROJECT=$1
@@ -17,9 +17,9 @@ mkdir "$ROOT_PROJECT" && cd "$ROOT_PROJECT"
 
 # Create parent pom.xml
 cat > pom.xml <<EOF
-<project xmlns="http://maven.apache.org/POM/4.0.0" 
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <groupId>com.${ROOT_PROJECT}</groupId>
@@ -29,6 +29,7 @@ cat > pom.xml <<EOF
   <modules>
 $(for m in "${MODULES[@]}"; do echo "    <module>$m</module>"; done)
   </modules>
+
   <dependencyManagement>
     <dependencies>
       <dependency>
@@ -40,20 +41,59 @@ $(for m in "${MODULES[@]}"; do echo "    <module>$m</module>"; done)
       </dependency>
     </dependencies>
   </dependencyManagement>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.springframework.boot</groupId>
+          <artifactId>spring-boot-maven-plugin</artifactId>
+        </plugin>
+        <plugin>
+          <groupId>org.jetbrains.kotlin</groupId>
+          <artifactId>kotlin-maven-plugin</artifactId>
+          <version>1.9.23</version>
+          <executions>
+            <execution>
+              <id>compile</id>
+              <phase>compile</phase>
+              <goals>
+                <goal>compile</goal>
+              </goals>
+            </execution>
+            <execution>
+              <id>test-compile</id>
+              <phase>test-compile</phase>
+              <goals>
+                <goal>test-compile</goal>
+              </goals>
+            </execution>
+          </executions>
+          <configuration>
+            <jvmTarget>17</jvmTarget>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+
 </project>
 EOF
 
 # Loop to create each module
 for MODULE in "${MODULES[@]}"; do
   echo "Creating module: $MODULE"
+
   mkdir -p "$MODULE/src/main/java/com/${ROOT_PROJECT//-//}/$MODULE"
+  mkdir -p "$MODULE/src/main/kotlin/com/${ROOT_PROJECT//-//}/$MODULE"
   mkdir -p "$MODULE/src/main/resources"
   mkdir -p "$MODULE/src/test/java"
+  mkdir -p "$MODULE/src/test/kotlin"
 
   cat > "$MODULE/pom.xml" <<EOF
-<project xmlns="http://maven.apache.org/POM/4.0.0" 
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
   <parent>
@@ -62,22 +102,62 @@ for MODULE in "${MODULES[@]}"; do
     <version>1.0.0</version>
   </parent>
   <artifactId>$MODULE</artifactId>
+
   <dependencies>
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter</artifactId>
     </dependency>
+    <dependency>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-stdlib</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.jetbrains.kotlin</groupId>
+      <artifactId>kotlin-reflect</artifactId>
+    </dependency>
   </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.jetbrains.kotlin</groupId>
+        <artifactId>kotlin-maven-plugin</artifactId>
+        <version>1.9.23</version>
+        <executions>
+          <execution>
+            <id>compile</id>
+            <phase>compile</phase>
+            <goals>
+              <goal>compile</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>test-compile</id>
+            <phase>test-compile</phase>
+            <goals>
+              <goal>test-compile</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <jvmTarget>17</jvmTarget>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
 </project>
 EOF
 
-  # Add minimal main class
-  MAIN_CLASS_NAME="$(echo "$MODULE" | sed -E 's/-//g' | sed -E 's/(^|_)([a-z])/\U\2/g')Application"
-  PACKAGE_NAME="com.${ROOT_PROJECT//-/.}.${MODULE//-/.}"
-  MAIN_DIR="$MODULE/src/main/java/$(echo $PACKAGE_NAME | tr . /)"
+  # Create Java main class only for runnable service modules
+  if [[ "$MODULE" != "common" && "$MODULE" != "shared" && "$MODULE" != "lib" ]]; then
+    MAIN_CLASS_NAME="$(echo "$MODULE" | sed -E 's/-//g' | sed -E 's/(^|_)([a-z])/\U\2/g')Application"
+    PACKAGE_NAME="com.${ROOT_PROJECT//-/.}.${MODULE//-/.}"
+    MAIN_DIR="$MODULE/src/main/java/$(echo $PACKAGE_NAME | tr . /)"
+    mkdir -p "$MAIN_DIR"
 
-  mkdir -p "$MAIN_DIR"
-  cat > "$MAIN_DIR/$MAIN_CLASS_NAME.java" <<EOF
+    cat > "$MAIN_DIR/$MAIN_CLASS_NAME.java" <<EOF
 package $PACKAGE_NAME;
 
 import org.springframework.boot.SpringApplication;
@@ -90,7 +170,8 @@ public class $MAIN_CLASS_NAME {
     }
 }
 EOF
+  fi
 
 done
 
-echo "✅ Project structure generated successfully in ./$ROOT_PROJECT"
+echo "✅ Multi-language (Java main for services + Kotlin support everywhere) Spring Boot project created successfully in ./$ROOT_PROJECT"
