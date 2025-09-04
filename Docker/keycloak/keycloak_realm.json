@@ -7,6 +7,14 @@
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": true,
   "editUsernameAllowed": true,
+
+  "accessTokenLifespan": 900,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "refreshTokenMaxReuse": 0,
+
   "clients": [
     {
       "clientId": "keycloak-spring-boot-client",
