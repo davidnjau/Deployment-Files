@@ -1,33 +1,67 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
- name: authservice
- labels:
-   app: authservice
+  name: authservice
+  namespace: default
+  labels:
+    app: authservice
 spec:
- replicas: 3
- selector:
-   matchLabels:
-     app: authservice
- template:
-   metadata:
-     labels:
-       app: authservice
-   spec:
-     containers:
-     - name: authservice
-       image: dnjau/botswana_emr_auth_image:v3
-       imagePullPolicy: "Always"
-       ports:
-       - containerPort: 8081
- 
+  replicas: 3
+  selector:
+    matchLabels:
+      app: authservice
+  template:
+    metadata:
+      labels:
+        app: authservice
+    spec:
+      containers:
+      - name: authservice
+        image: dnjau/botswana_emr_auth_image:v3
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8081
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        readinessProbe:
+          httpGet:
+            path: /actuator/health/readiness
+            port: 8081
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /actuator/health/liveness
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+
 ---
- 
+
 apiVersion: v1
 kind: Service
 metadata:
- name: authservice
+  name: authservice
+  namespace: default
 spec:
- type: NodePort
- selector:
-   app: authservice
+  # ClusterIP + Ingress is preferred over NodePort — avoids exposing ports on every node
+  type: ClusterIP
+  selector:
+    app: authservice
+  ports:
+  - port: 8081
+    targetPort: 8081

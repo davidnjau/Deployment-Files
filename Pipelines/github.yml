@@ -38,7 +38,7 @@ jobs:
           java-version: 11
           distribution: temurin
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Build International Instance
         run: |
@@ -48,19 +48,19 @@ jobs:
       - name: Build & push International Docker image
         run: |
           cd InternationalInstance
-          docker login -u ${{ env.DOCKER_USERNAME }} -p ${{ env.DOCKER_PASSWORD }}
+          echo "${{ env.DOCKER_PASSWORD }}" | docker login -u "${{ env.DOCKER_USERNAME }}" --password-stdin
           docker buildx create --use --name workflowBuilder
           docker buildx build --platform=linux/amd64,linux/arm64 -t ${{ env.IMAGE_NAME_INTERNATIONAL }} --push .
           docker logout
 
       - name: Setup SSH keys
-        uses: webfactory/ssh-agent@v0.7.0
+        uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ env.SSH_PASS_INTERNATIONAL }}
 
 
       - name: Remote ssh to server and update international instance
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ env.SSH_HOST_INTERNATIONAL }}
           username: ${{ env.SSH_USER_INTERNATIONAL }}
@@ -96,7 +96,7 @@ jobs:
           java-version: 11
           distribution: temurin
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Build National Instance
         run: |
@@ -106,18 +106,18 @@ jobs:
       - name: Build & push National Docker image
         run: |
           cd PssNationalInstance
-          docker login -u ${{ env.DOCKER_USERNAME }} -p ${{ env.DOCKER_PASSWORD }}
+          echo "${{ env.DOCKER_PASSWORD }}" | docker login -u "${{ env.DOCKER_USERNAME }}" --password-stdin
           docker buildx create --use --name workflowBuilder
           docker buildx build --platform=linux/amd64,linux/arm64 -t ${{ env.IMAGE_NAME_NATIONAL }} --push .
           docker logout
 
       - name: Setup SSH keys
-        uses: webfactory/ssh-agent@v0.5.0
+        uses: webfactory/ssh-agent@v0.9.0
         with:
           ssh-private-key: ${{ env.SSH_PASS_NATIONAL }}
 
       - name: Remote ssh to server and update National instance
-        uses: appleboy/ssh-action@master
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ env.SSH_HOST_NATIONAL }}
           username: ${{ env.SSH_USER_NATIONAL }}

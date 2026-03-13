@@ -1,52 +1,54 @@
 #!/bin/bash
+set -e
 
-# Check if the branch is up-to-date before pushing
 UPSTREAM=${1:-'@{u}'}
 LOCAL=$(git rev-parse @)
 REMOTE=$(git rev-parse "$UPSTREAM")
 BASE=$(git merge-base @ "$UPSTREAM")
 
-if [ $LOCAL = $REMOTE ]; then
-    echo "Branch is already up-to-date"
-    exit 1
-elif [ $LOCAL = $BASE ]; then
-    echo "Need to pull"
-    exit 1
-elif [ $REMOTE = $BASE ]; then
-    echo "Need to push"
-else
-  echo "Diverged branches"
+# Abort if the remote has commits we don't have locally
+if [ "$LOCAL" = "$REMOTE" ]; then
+  echo "Branch is already up-to-date. Nothing to push."
+  exit 0
+elif [ "$LOCAL" = "$BASE" ]; then
+  echo "Error: local branch is behind remote. Run 'git pull' first."
+  exit 1
+elif [ "$LOCAL" != "$BASE" ] && [ "$REMOTE" != "$BASE" ]; then
+  echo "Error: branches have diverged. Resolve the divergence before pushing."
   exit 1
 fi
 
-# Check if working tree is clean
-if ! git diff-index --quiet HEAD --; then
-    echo "Uncommited changes found. Please commit them before pushing"
-    exit 1
-fi
-
-# Check if current branch is the correct one before pushing
+# Enforce deployment from master only
 branch=$(git rev-parse --abbrev-ref HEAD)
 if [ "$branch" != "master" ]; then
-    echo "Not on the 'master' branch. Please switch to the correct branch before pushing"
-    exit 1
-fi
-
-# Add all files in the current directory to the staging area
-git add .
-
-# Ask for a commit message
-read -p "Enter commit message: " commitMessage
-
-# Commit the changes with the specified message
-git commit -m "$commitMessage"
-
-# Pull the latest changes from the remote repository
-git pull
-if [ $? -ne 0 ]; then
-  echo "There were merge conflicts. Please resolve them before pushing."
+  echo "Error: not on 'master' branch (currently on '$branch'). Switch branches before pushing."
   exit 1
 fi
 
-# Push the changes to the remote repository
+# Show what is staged/unstaged so the user can make a deliberate choice
+echo ""
+echo "=== Current status ==="
+git status --short
+echo ""
+
+# Stage only tracked files that have been modified — do not silently add untracked files
+git add -u
+
+# Bail out if there is nothing to commit
+if git diff --cached --quiet; then
+  echo "No staged changes to commit. Push any unpushed commits? (y/N)"
+  read -r confirm
+  if [ "$confirm" != "y" ] && [ "$confirm" != "Y" ]; then
+    exit 0
+  fi
+else
+  read -p "Enter commit message: " commitMessage
+  if [ -z "$commitMessage" ]; then
+    echo "Error: commit message cannot be empty."
+    exit 1
+  fi
+  git commit -m "$commitMessage"
+fi
+
+# Push directly — we already verified local is ahead of remote
 git push

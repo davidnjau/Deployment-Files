@@ -38,7 +38,7 @@ jobs:
         password: ${{ secrets.DOCKER_HUB_PASSWORD_NIMO }}
     
     - name: executing remote ssh commands using password
-      uses: appleboy/ssh-action@master
+      uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.SSH_HOST_NIMO }}
         username: ${{ secrets.SSH_USER_NIMO }}

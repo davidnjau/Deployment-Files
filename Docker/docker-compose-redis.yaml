@@ -5,25 +5,33 @@ services:
     image: ${REDIS_IMAGE}
     container_name: ${REDIS_CONTAINER_NAME}
     ports:
-      - "${REDIS_PORT}:6379"      # Redis
-      - "${REDIS_WEB_PORT}:8001"      # RedisInsight UI
+      - "${REDIS_PORT}:6379"       # Redis
+      - "${REDIS_WEB_PORT}:8001"   # RedisInsight UI
     volumes:
       - redis_data:/data
     environment:
-      - REDIS_ARGS=--save 900 1
+      # --requirepass enforces authentication on every connection
+      - REDIS_ARGS=--save 900 1 --requirepass ${REDIS_PASSWORD}
     networks:
-      - vector_network
+      - ${NETWORK_NAME}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "--raw", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
 
 volumes:
   redis_data:
     driver: local
-    
 
 networks:
   ${NETWORK_NAME}:

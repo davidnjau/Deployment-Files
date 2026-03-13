@@ -24,7 +24,8 @@ jobs:
                 name: Build Docker Image and Push to Docker Hub
                 command: |
                   docker build -t dnjau/botswana_emr_auth_image:v3 .
-                  echo "Sc281-6736/2014" | docker login -u "dnjau" --password-stdin
+                  # DOCKER_HUB_PASSWORD is set in CircleCI project environment variables
+                  echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USERNAME" --password-stdin
                   docker push dnjau/botswana_emr_auth_image:v3
                   docker logout
 
@@ -33,12 +34,21 @@ jobs:
     machine:
       image: ubuntu-2004:202010-01
     steps:
-      - run: sudo apt install rsync
-      - run: sudo apt-get install sshpass
+      - add_ssh_keys:
+          # Add the deploy key fingerprint from CircleCI project SSH Keys settings
+          fingerprints:
+            - "YOUR_SSH_KEY_FINGERPRINT"
+      - run:
+          name: Add remote host to known_hosts
+          command: |
+            mkdir -p ~/.ssh
+            # SSH_HOST is set in CircleCI project environment variables
+            ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
       - run:
           name: SSH into remote server and deploy auth service
           command: |
-            sshpass -p bitri@2022 ssh dnjau@botswanaemrdev.intellisoftkenya.com 'kubectl delete -f kubernetes/backend/ && kubectl create -f kubernetes/backend/ && sleep 6'
+            ssh "$SSH_USER@$SSH_HOST" \
+              'kubectl delete -f kubernetes/backend/ && kubectl create -f kubernetes/backend/ && sleep 6'
 
 
 

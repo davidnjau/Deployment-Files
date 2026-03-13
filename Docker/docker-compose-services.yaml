@@ -2,56 +2,56 @@ version: '3.8'
 
 services:
   postgres:
-    image: postgres:15
+    image: postgres:15.6-alpine
     container_name: postgres_db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: admin
-      POSTGRES_PASSWORD: admin_password
+      POSTGRES_USER: ${SUPERSET_POSTGRES_USER}
+      POSTGRES_PASSWORD: ${SUPERSET_POSTGRES_PASSWORD}
       POSTGRES_DB: initial_db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready", "-d", "db_prod"]
+      test: ["CMD-SHELL", "pg_isready -U ${SUPERSET_POSTGRES_USER} -d initial_db"]
       interval: 30s
-      timeout: 60s
+      timeout: 10s
       retries: 5
-      start_period: 80s 
+      start_period: 30s
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5455:5432"
-
-  # portainer:
-  #   image: portainer/portainer-ce:latest
-  #   container_name: portainer
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8000:8000"
-  #     - "9000:9000"
-  #   volumes:
-  #     - /var/run/docker.sock:/var/run/docker.sock
-  #     - portainer_data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
 
   superset:
-    image: apache/superset:latest
+    image: apache/superset:4.0.2
     container_name: superset
     restart: unless-stopped
     environment:
-      - SUPERSET_SECRET_KEY=6xO68SxjNUp1RXSL7zCKHSUk
+      # Generate with: openssl rand -base64 42
+      - SUPERSET_SECRET_KEY=${SUPERSET_SECRET_KEY}
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     ports:
       - "8088:8088"
     volumes:
       - superset_data:/app/superset_home
-    command: 
-      - "bash" 
-      - "-c" 
+    command:
+      - "bash"
+      - "-c"
       - |
-        superset db upgrade && 
-        superset init && 
+        superset db upgrade &&
+        superset init &&
         superset run -p 8088 --host=0.0.0.0 --with-threads
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
 
 volumes:
   postgres_data:
-  # portainer_data:
   superset_data:
