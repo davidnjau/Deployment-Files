@@ -1,31 +1,223 @@
 version: '3.8'
+
+# ─── Enterprise PostgreSQL Stack ──────────────────────────────────────────────
+#
+# Services:
+#   postgres       — PostgreSQL 14 with custom config, SCRAM auth, and query logging
+#   pgbouncer      — Connection pooler (transaction mode, SASL/SCRAM)
+#   redis          — Redis with password auth and persistence
+#   postgres-backup — Scheduled pg_dump with configurable retention
+#
+# Secret resolution order (pick one per deployment):
+#   1. .env file   — set all REQUIRED vars before running docker compose up
+#   2. Vault Agent — inject secrets as env vars using vault-env or the Vault
+#                    agent sidecar; replace ${VAR} references with vault:// paths
+#
+# Application connections should go through PgBouncer (port ${PGBOUNCER_PORT}),
+# NOT directly to PostgreSQL. Direct port 5432 is bound to 127.0.0.1 only
+# for DBA tooling (pgAdmin, psql, DBeaver).
+#
+# First-time setup:
+#   1. Fill in all REQUIRED vars in .env (or inject from Vault)
+#   2. docker compose -f docker-compose-postgres.yaml up -d
+#   3. Check logs: docker compose -f docker-compose-postgres.yaml logs -f
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 services:
-  db:
+
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
     image: postgres:14.1-alpine
-    restart: always
+    container_name: postgres
+    restart: unless-stopped
     environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_DB=${POSTGRES_DB}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Passed to init.sh to create the PgBouncer auth role
+      PGBOUNCER_AUTH_USER: ${PGBOUNCER_AUTH_USER}
+      PGBOUNCER_AUTH_PASSWORD: ${PGBOUNCER_AUTH_PASSWORD}
+    volumes:
+      # Persistent data
+      - postgres_data:/var/lib/postgresql/data
+      # Custom configuration (read-only mounts)
+      - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      # Runs once on first boot; creates pgbouncer auth user and lookup function
+      - ./postgres/init.sh:/docker-entrypoint-initdb.d/01_init.sh:ro
+    # Load our postgresql.conf and pg_hba.conf instead of the defaults
+    command: >
+      postgres
+        -c config_file=/etc/postgresql/postgresql.conf
+        -c hba_file=/etc/postgresql/pg_hba.conf
+    # Bind to 127.0.0.1 only — apps must use PgBouncer; this port is for DBA tools only
+    ports:
+      - "127.0.0.1:5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD-SHELL", "pg_isready -h localhost -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
       retries: 5
       start_period: 30s
-    ports:
-      - '5433:5432'
-    volumes:
-      - db:/var/lib/postgresql/data
+    networks:
+      - postgres_network
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 512M
+          cpus: '2'
+          memory: 1G
         reservations:
-          cpus: '0.25'
-          memory: 128M
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+        tag: "postgres"
 
+  # ── PgBouncer ────────────────────────────────────────────────────────────────
+  pgbouncer:
+    image: pgbouncer/pgbouncer:1.22.0
+    container_name: pgbouncer
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # Used by generate_userlist.sh to write userlist.txt at startup
+      PGBOUNCER_AUTH_USER: ${PGBOUNCER_AUTH_USER}
+      PGBOUNCER_AUTH_PASSWORD: ${PGBOUNCER_AUTH_PASSWORD}
+    volumes:
+      - ./postgres/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+      # generate_userlist.sh doubles as the entrypoint:
+      #   1. writes /etc/pgbouncer/userlist.txt from env vars
+      #   2. exec's pgbouncer
+      - ./postgres/generate_userlist.sh:/entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/entrypoint.sh"]
+    # Application connections land here
+    ports:
+      - "${PGBOUNCER_PORT:-6432}:5432"
+    healthcheck:
+      # pgrep is always available; alternatively use:
+      #   psql -h 127.0.0.1 -p 5432 -U ${PGBOUNCER_AUTH_USER} pgbouncer -c "SHOW VERSION;"
+      test: ["CMD-SHELL", "pgrep pgbouncer > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - postgres_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+        reservations:
+          cpus: '0.1'
+          memory: 32M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
+        tag: "pgbouncer"
+
+  # ── Redis ────────────────────────────────────────────────────────────────────
+  redis:
+    image: ${REDIS_IMAGE:-redis/redis-stack:7.4.0-v0}
+    container_name: ${REDIS_CONTAINER_NAME:-redis}
+    restart: unless-stopped
+    environment:
+      # --save 900 1    — persist if ≥1 key changed in 900s
+      # --save 300 10   — persist if ≥10 keys changed in 300s
+      # --requirepass   — enforce authentication
+      - REDIS_ARGS=--save 900 1 --save 300 10 --requirepass ${REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+      - "${REDIS_WEB_PORT:-8004}:8001"   # RedisInsight web UI
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - postgres_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+        tag: "redis"
+
+  # ── Scheduled Backup ─────────────────────────────────────────────────────────
+  postgres-backup:
+    image: postgres:14.1-alpine
+    container_name: postgres-backup
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: postgres
+      # Cron schedule (default: daily at 02:00 UTC)
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 2 * * *}
+      # Number of most-recent backups to retain
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-7}
+    volumes:
+      - ./postgres/backup.sh:/scripts/backup.sh:ro
+      - ./postgres/backup-entrypoint.sh:/scripts/backup-entrypoint.sh:ro
+      # Bind-mount to the host so backups survive container removal.
+      # The path on the host side is relative to the compose file location.
+      - ./backups:/backups
+      - backup_logs:/var/log/backup
+    entrypoint: ["/bin/sh", "/scripts/backup-entrypoint.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep crond > /dev/null 2>&1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - postgres_network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "5"
+        tag: "postgres-backup"
+
+# ─── Volumes ──────────────────────────────────────────────────────────────────
 volumes:
-  db:
+  postgres_data:
     driver: local
+  redis_data:
+    driver: local
+  backup_logs:
+    driver: local
+
+# ─── Network ──────────────────────────────────────────────────────────────────
+networks:
+  postgres_network:
+    driver: bridge
+    name: ${NETWORK_NAME:-postgres_network}

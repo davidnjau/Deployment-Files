@@ -1,0 +1,4 @@
+# Ignore all backup dump files; keep the directory itself tracked via .gitkeep
+*.dump
+*.sql
+*.sql.gz
